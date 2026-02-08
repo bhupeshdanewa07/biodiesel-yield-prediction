@@ -8,6 +8,7 @@ from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.callbacks import EarlyStopping
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error, r2_score
+from sklearn.preprocessing import StandardScaler
 
 # Set page configuration
 st.set_page_config(page_title="Biodiesel Yield Prediction", layout="wide")
@@ -17,17 +18,38 @@ st.title("Biodiesel Yield Prediction Model")
 st.markdown("### Developed by: **Bhupesh Danewa**")
 st.markdown("#### College: **Maulana Azad National Institute of Technology**")
 
+def remove_outliers_iqr(df):
+    """
+    Remove outliers from the dataframe using the IQR method.
+    Replicates logic from data-preprocessing.ipynb
+    """
+    df_clean = df.copy()
+    numeric_cols = df_clean.select_dtypes(include='number').columns
+    for col in numeric_cols:
+        Q1 = df_clean[col].quantile(0.25)
+        Q3 = df_clean[col].quantile(0.75)
+        IQR = Q3 - Q1
+        lower_bound = Q1 - 1.5 * IQR
+        upper_bound = Q3 + 1.5 * IQR
+        df_clean = df_clean[(df_clean[col] >= lower_bound) & (df_clean[col] <= upper_bound)]
+    return df_clean
+
 @st.cache_data
-def load_data():
-    # Updated file path to the new dataset
+def load_and_preprocess_data():
+    # Load Raw Data
     file_path = "Compiled Dataset.xlsx"
     try:
         df = pd.read_excel(file_path)
-        # Drop rows with missing values as the new dataset has NaNs
+        # Drop rows with missing values
         df = df.dropna()
-        # Sanitize column names as per notebook logic
+        
+        # Sanitize column names
         df.columns = df.columns.str.replace(r'[^\w]', '_', regex=True)
-        return df
+        
+        # Outlier Removal
+        df_clean = remove_outliers_iqr(df)
+        
+        return df_clean
     except FileNotFoundError:
         st.error(f"File not found: {file_path}. Please make sure the dataset is in the same directory as this app.")
         return None
@@ -35,20 +57,28 @@ def load_data():
         st.error(f"Error loading data: {e}")
         return None
 
-df = load_data()
+# Load formatted data (outliers removed but not scaled yet)
+df = load_and_preprocess_data()
 
 if df is not None:
-    # Prepare Data
-    # Identifying features and target based on dataset analysis
-    # target is the last column 'Biodiesel_yield___' (after sanitization)
+    # Define Features and Target
     target_col = df.columns[-1]
     feature_cols = df.columns[:-1]
     
     X = df[feature_cols]
-    y = df[target_col]
+    y = df[[target_col]] # Keep as 2D DataFrame for scaler
+    
+    # Initialize Scalers
+    # We must fit scalers here so they can be reused for user input
+    feature_scaler = StandardScaler()
+    target_scaler = StandardScaler()
+    
+    # Fit and Transform Data
+    X_scaled = pd.DataFrame(feature_scaler.fit_transform(X), columns=X.columns)
+    y_scaled = pd.DataFrame(target_scaler.fit_transform(y), columns=y.columns)
     
     # Split Data (70% train, 15% val, 15% test)
-    X_train, X_temp, y_train, y_temp = train_test_split(X, y, test_size=0.30, random_state=42)
+    X_train, X_temp, y_train, y_temp = train_test_split(X_scaled, y_scaled, test_size=0.30, random_state=42)
     X_val, X_test, y_val, y_test = train_test_split(X_temp, y_temp, test_size=0.50, random_state=42)
     
     @st.cache_resource
@@ -84,28 +114,27 @@ if df is not None:
         )
         return model
 
-    with st.spinner("Training Model on new dataset... This might take a moment."):
+    with st.spinner("Training Model on preprocessed dataset... This might take a moment."):
         model = train_model()
     
     st.success("Model Trained Successfully!")
 
-    # Calculate metrics on test set to show model performance
-    y_pred = model.predict(X_test)
-    test_r2 = r2_score(y_test, y_pred)
+    # Calculate metrics on test set
+    y_pred_scaled = model.predict(X_test)
+    test_r2 = r2_score(y_test, y_pred_scaled)
     st.sidebar.markdown(f"**Model Performance (Test R²):** {test_r2:.4f}")
 
-    # Sidebar for inputs
+    # Sidebar for inputs (Using RAW values from the Cleaned Dataframe for sliders)
     st.sidebar.header("Input Parameters")
     
     def user_input_features():
         inputs = {}
         for col in feature_cols:
+            # We use the cleaned dataframe statistics for sliders to ensure valid ranges
             min_val = float(df[col].min())
             max_val = float(df[col].max())
             mean_val = float(df[col].mean())
             
-            # Clean up column name for display
-            # Example: Molar_Ratio_MeOH__Oil_ -> Molar Ratio MeOH Oil
             display_name = col.replace('_', ' ').strip()
             
             inputs[col] = st.sidebar.slider(display_name, min_val, max_val, mean_val)
@@ -118,11 +147,22 @@ if df is not None:
     st.dataframe(input_df)
 
     if st.button("Predict Yield"):
-        prediction = model.predict(input_df)
+        # 1. Scale User Input
+        input_scaled = feature_scaler.transform(input_df)
+        
+        # 2. Get Prediction (Single Value)
+        prediction_scaled = model.predict(input_scaled)
+        
+        # 3. Inverse Transform Target
+        prediction_raw = target_scaler.inverse_transform(prediction_scaled)
+        
+        # 4. Clip result to max 100%
+        final_yield = min(prediction_raw[0][0], 100.0)
+        final_yield = max(final_yield, 0.0) # Ensure no negative yield either
+        
         st.markdown("---")
         st.subheader("Predicted Biodiesel Yield")
-        # Output as percentage
-        st.info(f"The predicted yield is: **{prediction[0][0]:.2f}%**")
+        st.info(f"The predicted yield is: **{final_yield:.2f}%**")
 
 else:
-    st.warning("Please upload the dataset or ensure it is in the correct path.")
+    st.warning("Please upload the dataset or ensure 'Compiled Dataset.xlsx' is in the correct path.")
