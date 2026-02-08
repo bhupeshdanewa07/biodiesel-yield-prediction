@@ -19,10 +19,12 @@ st.markdown("#### College: **Maulana Azad National Institute of Technology**")
 
 @st.cache_data
 def load_data():
-    # Assuming the file is in the same directory as the app
-    file_path = "Fully_Preprocessed_Compiled_Dataset.xlsx"
+    # Updated file path to the new dataset
+    file_path = "Compiled Dataset.xlsx"
     try:
         df = pd.read_excel(file_path)
+        # Drop rows with missing values as the new dataset has NaNs
+        df = df.dropna()
         # Sanitize column names as per notebook logic
         df.columns = df.columns.str.replace(r'[^\w]', '_', regex=True)
         return df
@@ -37,8 +39,8 @@ df = load_data()
 
 if df is not None:
     # Prepare Data
-    # Identifying features and target based on notebook analysis
-    # target is the last column 'Biodiesel_yield___'
+    # Identifying features and target based on dataset analysis
+    # target is the last column 'Biodiesel_yield___' (after sanitization)
     target_col = df.columns[-1]
     feature_cols = df.columns[:-1]
     
@@ -82,7 +84,7 @@ if df is not None:
         )
         return model
 
-    with st.spinner("Training Model... This might take a moment."):
+    with st.spinner("Training Model on new dataset... This might take a moment."):
         model = train_model()
     
     st.success("Model Trained Successfully!")
@@ -119,7 +121,8 @@ if df is not None:
         prediction = model.predict(input_df)
         st.markdown("---")
         st.subheader("Predicted Biodiesel Yield")
-        st.info(f"The predicted yield is: **{prediction[0][0]:.4f}**")
+        # Output as percentage
+        st.info(f"The predicted yield is: **{prediction[0][0]:.2f}%**")
 
 else:
     st.warning("Please upload the dataset or ensure it is in the correct path.")
