@@ -1,18 +1,6 @@
-# Core Data Processing
-numpy
+streamlit
 pandas
-openpyxl  # Required for Excel file I/O with pandas
-
-# Visualization
-matplotlib
-
-# Machine Learning - Scikit-learn
-scikit-learn
-
-# Gradient Boosting Libraries
-lightgbm
-xgboost
-catboost
-
-# Deep Learning
+numpy
 tensorflow
+scikit-learn
+openpyxl
