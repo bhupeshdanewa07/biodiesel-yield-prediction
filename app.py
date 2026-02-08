@@ -119,11 +119,6 @@ if df is not None:
     
     st.success("Model Trained Successfully!")
 
-    # Calculate metrics on test set
-    y_pred_scaled = model.predict(X_test)
-    test_r2 = r2_score(y_test, y_pred_scaled)
-    st.sidebar.markdown(f"**Model Performance (Test R²):** {test_r2:.4f}")
-
     # Sidebar for inputs (Using RAW values from the Cleaned Dataframe for sliders)
     st.sidebar.header("Input Parameters")
     
@@ -166,3 +161,4 @@ if df is not None:
 
 else:
     st.warning("Please upload the dataset or ensure 'Compiled Dataset.xlsx' is in the correct path.")
+
